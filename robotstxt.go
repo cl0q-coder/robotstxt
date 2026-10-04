@@ -36,6 +36,11 @@ type rule struct {
 
 // Parse reads a robots.txt body.
 func Parse(body string) *Rules {
+	// RFC 9309 §2.1: strip a single leading UTF-8 BOM. Without this, a
+	// BOM-prefixed first line parses as field "\ufeffuser-agent", the group
+	// is never created, and AllowsPath wrongly returns true for a file that
+	// disallows everything.
+	body = strings.TrimPrefix(body, "\ufeff")
 	type group struct {
 		ours, star bool
 		rules      []rule
