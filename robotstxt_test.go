@@ -125,15 +125,15 @@ Disallow: /naïve/
 Allow: /café/public
 `)
 	cases := map[string]bool{
-		"https://x.com/café":              false, // raw non-ASCII URL
-		"https://x.com/caf%C3%A9":          false, // pre-encoded URL
-		"https://x.com/caf%c3%a9":          false, // lowercase hex -> normalized
-		"https://x.com/café/public":        true,  // longer Allow wins
-		"https://x.com/café/public/page":   true,
-		"https://x.com/naïve/":             false,
-		"https://x.com/naïve/deep":         false,
-		"https://x.com/cafe":               true,  // no accent, no match
-		"https://x.com/other":              true,
+		"https://x.com/café":             false, // raw non-ASCII URL
+		"https://x.com/caf%C3%A9":        false, // pre-encoded URL
+		"https://x.com/caf%c3%a9":        false, // lowercase hex -> normalized
+		"https://x.com/café/public":      true,  // longer Allow wins
+		"https://x.com/café/public/page": true,
+		"https://x.com/naïve/":           false,
+		"https://x.com/naïve/deep":       false,
+		"https://x.com/cafe":             true, // no accent, no match
+		"https://x.com/other":            true,
 	}
 	for u, want := range cases {
 		if got := r.Allows(mustURL(u)); got != want {
