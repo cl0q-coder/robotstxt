@@ -112,12 +112,15 @@ func Parse(body string) *Rules {
 }
 
 // plainPrefix reports whether p is a plain path prefix — no * wildcard and no
-// $ end anchor — in which case matching is exactly strings.HasPrefix.
+// $ end anchor — in which case matching is exactly strings.HasPrefix. The
+// returned prefix is percent-encoded exactly like pattern() does, because
+// Allows() matches against u.EscapedPath(); a raw non-ASCII prefix would never
+// match an encoded path (e.g. "/café" vs "/caf%C3%A9").
 func plainPrefix(p string) (string, bool) {
 	if strings.Contains(p, "*") || strings.HasSuffix(p, "$") {
 		return "", false
 	}
-	return p, true
+	return escapePattern(p), true
 }
 
 // pattern turns a robots path pattern (with * and a trailing $) into an anchored regexp.
@@ -186,6 +189,8 @@ func (r *Rules) Allows(u *url.URL) bool {
 }
 
 // AllowsPath reports whether a path such as "/" or "/a/b?x=1" may be fetched.
+// The path is percent-encoded exactly like patterns are, so raw non-ASCII
+// paths and mixed-case hex encodings match consistently.
 func (r *Rules) AllowsPath(p string) bool {
 	if r == nil {
 		return true
@@ -193,6 +198,7 @@ func (r *Rules) AllowsPath(p string) bool {
 	if p == "" {
 		p = "/"
 	}
+	p = escapePattern(p)
 	best, allow := -1, true
 	for _, rl := range r.rules {
 		var matched bool
