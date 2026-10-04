@@ -32,6 +32,10 @@ type rule struct {
 	allow bool
 	plen  int
 	re    *regexp.Regexp
+	// prefix is set when the pattern has no * wildcard and no $ anchor:
+	// matching is a plain strings.HasPrefix, skipping regexp entirely.
+	// Empty means "use re".
+	prefix string
 }
 
 // Parse reads a robots.txt body.
@@ -73,7 +77,13 @@ func Parse(body string) *Rules {
 			}
 		case "allow", "disallow":
 			if cur != nil && val != "" {
-				cur.rules = append(cur.rules, rule{allow: field == "allow", plen: len(val), re: pattern(val)})
+				rl := rule{allow: field == "allow", plen: len(val)}
+				if pre, ok := plainPrefix(val); ok {
+					rl.prefix = pre
+				} else {
+					rl.re = pattern(val)
+				}
+				cur.rules = append(cur.rules, rl)
 			}
 		case "crawl-delay":
 			if cur != nil {
@@ -99,6 +109,15 @@ func Parse(body string) *Rules {
 		}
 	}
 	return out
+}
+
+// plainPrefix reports whether p is a plain path prefix — no * wildcard and no
+// $ end anchor — in which case matching is exactly strings.HasPrefix.
+func plainPrefix(p string) (string, bool) {
+	if strings.Contains(p, "*") || strings.HasSuffix(p, "$") {
+		return "", false
+	}
+	return p, true
 }
 
 // pattern turns a robots path pattern (with * and a trailing $) into an anchored regexp.
@@ -176,7 +195,13 @@ func (r *Rules) AllowsPath(p string) bool {
 	}
 	best, allow := -1, true
 	for _, rl := range r.rules {
-		if rl.plen >= best && rl.re.MatchString(p) && (rl.plen > best || rl.allow) {
+		var matched bool
+		if rl.prefix != "" {
+			matched = strings.HasPrefix(p, rl.prefix)
+		} else {
+			matched = rl.re.MatchString(p)
+		}
+		if rl.plen >= best && matched && (rl.plen > best || rl.allow) {
 			best, allow = rl.plen, rl.allow
 		}
 	}
