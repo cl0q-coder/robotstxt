@@ -43,14 +43,17 @@ func loadCorpus(t *testing.T) map[string]*Rules {
 	return out
 }
 
-// forceRegex returns a copy of r with every rule on the regexp path, so the
-// fast path can be benchmarked and differential-tested against the old
-// behavior over identical rule sets.
-func forceRegex(r *Rules) *Rules {
+// forceWildcard returns a copy of r with every rule on the wildcard-matcher
+// path, so the fast path can be benchmarked and differential-tested against
+// the matcher over identical rule sets.
+func forceWildcard(r *Rules) *Rules {
 	out := &Rules{delay: r.delay, rules: make([]rule, len(r.rules))}
 	for i, rl := range r.rules {
 		if rl.prefix != "" {
-			rl.re = pattern(rl.prefix)
+			// Prefixes come from patterns with no '*' and no trailing '$'
+			// (already escaped), so this always yields a single unanchored
+			// segment — the same wildcard Parse would have built.
+			rl.pat, _ = compileWildcard(rl.prefix)
 			rl.prefix = ""
 		}
 		out.rules[i] = rl
@@ -58,14 +61,14 @@ func forceRegex(r *Rules) *Rules {
 	return out
 }
 
-// TestFastPathMatchesRegex requires the prefix fast path to return the same
-// verdict as the regexp path for every fixture and probe path.
-func TestFastPathMatchesRegex(t *testing.T) {
+// TestFastPathMatchesWildcard requires the prefix fast path to return the
+// same verdict as the wildcard matcher for every fixture and probe path.
+func TestFastPathMatchesWildcard(t *testing.T) {
 	for name, r := range loadCorpus(t) {
-		rx := forceRegex(r)
+		wc := forceWildcard(r)
 		for _, p := range probePaths {
-			if got, want := r.AllowsPath(p), rx.AllowsPath(p); got != want {
-				t.Errorf("%s %q: fast=%v regex=%v", name, p, got, want)
+			if got, want := r.AllowsPath(p), wc.AllowsPath(p); got != want {
+				t.Errorf("%s %q: fast=%v wildcard=%v", name, p, got, want)
 			}
 		}
 	}
@@ -73,17 +76,17 @@ func TestFastPathMatchesRegex(t *testing.T) {
 
 var benchSinkAllow bool
 
-// BenchmarkAllows compares the prefix fast path against the regexp path over
-// the full fixture corpus (50 files). Every iteration checks every probe path
-// against every fixture's rules, so the per-iteration cost is dominated by
-// rule matching, not setup.
+// BenchmarkAllows compares the prefix fast path against the wildcard matcher
+// over the full fixture corpus (50 files). Every iteration checks every probe
+// path against every fixture's rules, so the per-iteration cost is dominated
+// by rule matching, not setup.
 func BenchmarkAllows(b *testing.B) {
 	files, err := filepath.Glob("testdata/robots/*.txt")
 	if err != nil || len(files) == 0 {
 		b.Fatal("testdata/robots corpus missing")
 	}
 	sort.Strings(files)
-	type pair struct{ fast, regex *Rules }
+	type pair struct{ fast, wildcard *Rules }
 	var corpus []pair
 	totalRules := 0
 	for _, f := range files {
@@ -93,7 +96,7 @@ func BenchmarkAllows(b *testing.B) {
 		}
 		r := Parse(string(body))
 		totalRules += len(r.rules)
-		corpus = append(corpus, pair{r, forceRegex(r)})
+		corpus = append(corpus, pair{r, forceWildcard(r)})
 	}
 	b.Logf("%d fixtures, %d rules, %d probe paths", len(files), totalRules, len(probePaths))
 	b.Run("FastPath", func(b *testing.B) {
@@ -107,13 +110,13 @@ func BenchmarkAllows(b *testing.B) {
 			}
 		}
 	})
-	b.Run("RegexPath", func(b *testing.B) {
+	b.Run("WildcardPath", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			for _, c := range corpus {
 				for _, p := range probePaths {
-					benchSinkAllow = c.regex.AllowsPath(p)
+					benchSinkAllow = c.wildcard.AllowsPath(p)
 				}
 			}
 		}
