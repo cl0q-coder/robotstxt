@@ -1,7 +1,9 @@
 package robotstxt
 
 import (
+	"fmt"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -99,7 +101,56 @@ func TestNonGroupLinesDontSplitGroups(t *testing.T) {
 	}
 }
 
-// A UTF-8 BOM at the start of the file must not break parsing of the first
+// At equal path length, Allow beats Disallow (RFC 9309 §2.2.2 longest-match
+// tie-break). The order of the two lines must not matter.
+func TestTieBreakAllowWinsEqualLength(t *testing.T) {
+	for _, body := range []string{
+		"User-agent: *\nDisallow: /x\nAllow: /x\n",
+		"User-agent: *\nAllow: /x\nDisallow: /x\n",
+	} {
+		if r := Parse(body); !r.AllowsPath("/x") {
+			t.Errorf("equal-length Allow must beat Disallow regardless of order (body %q)", body)
+		}
+	}
+	// plen is the raw pattern length, so a wildcard rule ties a plain rule
+	// of the same spelling length: Allow still wins.
+	r := Parse("User-agent: *\nDisallow: /ab*\nAllow: /abc\n")
+	if !r.AllowsPath("/abc") {
+		t.Error("Allow /abc (plen 4) must beat Disallow /ab* (plen 4)")
+	}
+	// Sanity: without the tie the longer rule still wins either way.
+	r = Parse("User-agent: *\nDisallow: /abcd\nAllow: /abc\n")
+	if r.AllowsPath("/abcd") {
+		t.Error("longer Disallow /abcd must beat shorter Allow /abc")
+	}
+}
+
+// Bodies past MaxBytes are truncated on a line boundary: the rules that fit
+// apply, a half-read trailing line never becomes a half-applied rule.
+func TestParseTruncatesAtMaxBytes(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("User-agent: *\n")
+	for i := 0; i < 20000; i++ {
+		fmt.Fprintf(&b, "Disallow: /pad-%05d-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n", i)
+	}
+	b.WriteString("Disallow: /after-the-cut\n")
+	body := b.String()
+	if len(body) <= MaxBytes {
+		t.Fatalf("test body %d bytes does not exceed MaxBytes", len(body))
+	}
+	r := Parse(body)
+	if !r.AllowsPath("/after-the-cut") {
+		t.Error("rule past MaxBytes must not apply")
+	}
+	if r.AllowsPath("/pad-00000-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx") {
+		t.Error("rule before the cut must still apply")
+	}
+	// The cut lands on a line boundary: no partial final rule leaks in.
+	if n := len(r.rules); n == 0 || n > MaxRules {
+		t.Errorf("unexpected rule count %d", n)
+	}
+}
+
 // group (RFC 9309 §2.1): without stripping, the first field parses as
 // "\ufeffuser-agent" and a "Disallow: /" file wrongly allows everything.
 func TestParseStripsBOM(t *testing.T) {
