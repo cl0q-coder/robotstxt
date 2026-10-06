@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"cl0q/botid"
+	"codeberg.org/cl0qsearch/botid"
 )
 
 // MaxCrawlDelay caps the Crawl-delay a site can ask for.
