@@ -207,6 +207,18 @@ func plainPrefix(p string) (string, bool) {
 // Without this, a rule like "Disallow: /café" could never match, because the
 // path under test arrives as "/caf%C3%A9".
 func escapePattern(p string) string {
+	// Fast path: pure ASCII with no '%' needs no escaping — return as-is,
+	// zero allocations. This is the common case for AllowsPath probes.
+	clean := true
+	for i := 0; i < len(p); i++ {
+		if p[i] == '%' || p[i] >= 0x80 {
+			clean = false
+			break
+		}
+	}
+	if clean {
+		return p
+	}
 	var b strings.Builder
 	b.Grow(len(p))
 	for i := 0; i < len(p); i++ {
