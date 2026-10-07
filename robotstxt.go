@@ -24,7 +24,10 @@ import (
 // MaxCrawlDelay caps the Crawl-delay a site can ask for.
 const MaxCrawlDelay = 30 * time.Second
 
-// MaxBytes is how much of a robots.txt file callers should read (RFC 9309 asks crawlers to parse at least 500 KiB).
+// MaxBytes caps how much of a robots.txt body Parse reads (RFC 9309 asks
+// crawlers to parse at least 500 KiB). Parse truncates longer bodies on a
+// line boundary; callers fetching the file can stop reading at MaxBytes and
+// rely on Parse as the backstop.
 const MaxBytes = 512 << 10
 
 // MaxRules caps the number of Allow/Disallow rules retained from a single
@@ -111,8 +114,17 @@ func (w wildcard) match(path string) bool {
 	return strings.Contains(path[pos:], last)
 }
 
-// Parse reads a robots.txt body.
+// Parse reads a robots.txt body. Bodies longer than MaxBytes are truncated
+// on a line boundary first: a half-read trailing line never becomes a
+// half-applied rule, and a hostile multi-megabyte file can't blow the
+// parse budget.
 func Parse(body string) *Rules {
+	if len(body) > MaxBytes {
+		body = body[:MaxBytes]
+		if i := strings.LastIndexByte(body, '\n'); i >= 0 {
+			body = body[:i]
+		}
+	}
 	// RFC 9309 §2.1: strip a single leading UTF-8 BOM. Without this, a
 	// BOM-prefixed first line parses as field "\ufeffuser-agent", the group
 	// is never created, and AllowsPath wrongly returns true for a file that
@@ -253,7 +265,16 @@ func upperHex(c byte) byte {
 	return c
 }
 
-// Allows reports whether u's path (and query) may be fetched.
+// Allows reports whether u may be fetched.
+//
+// Matching runs against u.EscapedPath() plus, when present, "?"+u.RawQuery.
+// The query is taken byte-exact from the URL: it is not decoded or
+// re-encoded, so a rule must spell it exactly as it appears in the URL —
+// parameter order and %20 vs + both matter. The one exception is
+// percent-escape canonicalization, applied uniformly to rules and to the
+// path+query under test: non-ASCII bytes are percent-encoded and %-escape
+// hex is upper-cased. So "Disallow: /?q=café" matches "/?q=caf%C3%A9" and
+// vice versa, but "Disallow: /?a=1" never matches "/?a=01".
 func (r *Rules) Allows(u *url.URL) bool {
 	p := u.EscapedPath()
 	if u.RawQuery != "" {

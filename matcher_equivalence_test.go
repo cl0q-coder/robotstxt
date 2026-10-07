@@ -30,6 +30,11 @@ var matcherEquivalenceCases = []struct {
 	{"/a.c", []string{"/a.c", "/abc", "/axc"}},          // . is literal, not regex-any
 	{"/a+b", []string{"/a+b", "/aab", "/ab"}},           // + is literal
 	{"/a(b)", []string{"/a(b)", "/ab"}},                 // parens are literal
+	{"/a[b]", []string{"/a[b]", "/ab", "/aab"}},         // brackets are literal, not a class
+	{"/a|b", []string{"/a|b", "/a", "/ab"}},             // | is literal, not alternation
+	{"/a^b", []string{"/a^b", "/ab"}},                   // ^ is literal (start anchor is implicit)
+	{`/a\b`, []string{`/a\b`, "/ab"}},                   // backslash is literal, not an escape
+	{"/a{2}", []string{"/a{2}", "/aa"}},                 // braces are literal, not a repeat
 	{"/café", []string{"/caf%C3%A9", "/café", "/cafe"}}, // unicode percent-encoding
 	{"/*", []string{"/", "/anything/at/all"}},
 	{"$", []string{"/", "/x"}}, // trailing-$ with empty prefix anchors end... of "^" = start only
