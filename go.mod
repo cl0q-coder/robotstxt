@@ -6,4 +6,4 @@ require codeberg.org/cl0qsearch/botid v0.1.0
 
 require github.com/jimsmart/grobotstxt v1.0.3 // indirect
 
-replace codeberg.org/cl0qsearch/botid => ../botid
+replace codeberg.org/cl0qsearch/botid => github.com/cl0q-coder/botid v0.1.0
