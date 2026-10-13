@@ -4,6 +4,6 @@ go 1.25.0
 
 require codeberg.org/cl0qsearch/botid v0.1.0
 
-require github.com/jimsmart/grobotstxt v1.0.3 // indirect
+require github.com/jimsmart/grobotstxt v1.0.3
 
 replace codeberg.org/cl0qsearch/botid => github.com/cl0q-coder/botid v0.1.0
